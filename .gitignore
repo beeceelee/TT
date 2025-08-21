@@ -1,23 +1,4 @@
-# Python cache
-__pycache__/
 *.pyc
-*.pyo
-*.pyd
-
-# Virtual environment
+__pycache__/
 .venv/
-env/
-venv/
-
-# Environment files (store secrets here, never push)
 .env
-
-# OS junk
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-
-# Render/Heroku build files
-*.sqlite3
