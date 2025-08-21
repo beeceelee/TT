@@ -1,14 +1,15 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import requests, os
-import sys
 from PIL import Image
 from io import BytesIO
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Render will set this
+# Get the bot token from environment variables (set in Render)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 API_URL = "https://www.tikwm.com/api/"
 
 def get_image_type(file_content):
+    """Detect the image type using Pillow (Image format)."""
     try:
         image = Image.open(BytesIO(file_content))
         return image.format  # Returns the image format (JPEG, PNG, etc.)
@@ -16,9 +17,11 @@ def get_image_type(file_content):
         return None
 
 def start(update, context):
+    """Start command - sends a welcome message."""
     update.message.reply_text("👋 Send me a TikTok link and I’ll download it (no watermark)!")
 
 def download_tiktok(update, context):
+    """Handles downloading of TikTok videos."""
     url = update.message.text.strip()
 
     if "tiktok.com" not in url:
@@ -38,13 +41,13 @@ def download_tiktok(update, context):
                 caption="✅ TikTok Video (no watermark)\n\nDownloaded via @Save4TiktokVideos_bot"
             )
 
-            # Optionally: Check image type with the new Pillow function
+            # Optionally: Check image type with Pillow (only if needed)
             # Example: assuming file_content is available (e.g., video file)
-            image_type = get_image_type(file_content)
-            if image_type:
-                print(f"File type detected: {image_type}")
-            else:
-                print("Invalid file or unsupported format.")
+            # image_type = get_image_type(file_content)
+            # if image_type:
+            #     print(f"File type detected: {image_type}")
+            # else:
+            #     print("Invalid file or unsupported format.")
 
         else:
             update.message.reply_text("⚠️ Couldn’t download video. Try another link.")
@@ -53,9 +56,11 @@ def download_tiktok(update, context):
         update.message.reply_text(f"⚠️ Error: {e}")
 
 def main():
+    """Main function to start the bot."""
     updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
 
+    # Commands and message handlers
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, download_tiktok))
 
