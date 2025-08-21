@@ -3,9 +3,16 @@ import requests, os
 from PIL import Image
 from io import BytesIO
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # Render will set this
 
 API_URL = "https://www.tikwm.com/api/"
+
+def get_image_type(file_content):
+    try:
+        image = Image.open(BytesIO(file_content))
+        return image.format  # Returns the image format (JPEG, PNG, etc.)
+    except IOError:
+        return None
 
 def start(update, context):
     update.message.reply_text("👋 Send me a TikTok link and I’ll download it (no watermark)!")
@@ -24,11 +31,20 @@ def download_tiktok(update, context):
         if data.get("data"):
             video_url = data["data"]["play"]
 
-            # send video with credit
+            # Send video with caption
             update.message.reply_video(
                 video_url,
                 caption="✅ TikTok Video (no watermark)\n\nDownloaded via @Save4TiktokVideos_bot"
             )
+
+            # Optionally: Check image type with the new Pillow function
+            # Example: assuming file_content is available (e.g., video file)
+            image_type = get_image_type(file_content)
+            if image_type:
+                print(f"File type detected: {image_type}")
+            else:
+                print("Invalid file or unsupported format.")
+
         else:
             update.message.reply_text("⚠️ Couldn’t download video. Try another link.")
 
