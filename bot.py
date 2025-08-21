@@ -1,8 +1,7 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import requests, os
-import sys
-import imghdr_pure as imghdr  # This replaces the standard 'imghdr'
-sys.modules['imghdr'] = imghdr
+from PIL import Image
+from io import BytesIO
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")  
 
