@@ -1,7 +1,7 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import requests, os
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Render will set this
+BOT_TOKEN = os.getenv("BOT_TOKEN")  
 
 API_URL = "https://www.tikwm.com/api/"
 
