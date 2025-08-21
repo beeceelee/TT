@@ -1,7 +1,12 @@
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import requests, os
+import sys
 from PIL import Image
 from io import BytesIO
+
+# Make Pillow act as imghdr
+import imghdr_pure as imghdr
+sys.modules['imghdr'] = imghdr
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")  # Render will set this
 
