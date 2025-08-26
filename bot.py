@@ -1,10 +1,35 @@
+import os
+import io
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from telegram import Update, InputFile
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import tempfile
 import subprocess
-import io
-import os
-from telegram import InputFile, Update
-from telegram.ext import ContextTypes
+import yt_dlp
 
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+PORT = int(os.environ.get("PORT", 10000))
+
+# Minimal HTTP server for Render health check
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_http_server():
+    server = HTTPServer(("0.0.0.0", PORT), SimpleHandler)
+    server.serve_forever()
+
+# Start command handler
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Send me a TikTok link and I will download HD for you!"
+    )
+
+# Rewritten download_tiktok function (from previous message)
 async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     if "tiktok.com" not in url:
@@ -29,7 +54,6 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "noplaylist": True,
         }
 
-        import yt_dlp
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
@@ -52,7 +76,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             buffer = io.BytesIO(f.read())
         buffer.seek(0)
 
-        caption = "Downloaded by:@Save4TiktokVideos_bot"
+        caption = "Downloaded by @Save4TiktokVideos_bot"
         await update.message.reply_video(
             video=InputFile(buffer, filename="tiktok.mp4"),
             caption=caption
@@ -69,3 +93,15 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(tmp_fixed_path)
 
     await loading_msg.edit_text("✅ Download complete!")
+
+# Run bot
+def run_bot():
+    app_bot = ApplicationBuilder().token(BOT_TOKEN).build()
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok))
+    app_bot.run_polling()
+
+if __name__ == "__main__":
+    # Start health check HTTP server for Render
+    threading.Thread(target=run_http_server, daemon=True).start()
+    run_bot()
