@@ -1,16 +1,6 @@
-# Python caches
 __pycache__/
 *.py[cod]
-
-# Virtual environments
 venv/
 .env
-
-# Byte/video downloads (if any)
-*.mp4
-*.mkv
-*.webm
-*.tmp
-
-# Logs
 *.log
+*.mp4
