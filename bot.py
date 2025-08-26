@@ -2,6 +2,7 @@ import os
 import io
 import re
 import threading
+import asyncio
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InputFile
@@ -11,6 +12,7 @@ import yt_dlp
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))
 
+# Minimal HTTP server for Render health check
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -22,6 +24,7 @@ def run_http_server():
     server = HTTPServer(("0.0.0.0", PORT), SimpleHandler)
     server.serve_forever()
 
+# Expand vt.tiktok.com short URLs
 def expand_tiktok_url(url: str) -> str:
     try:
         resp = requests.head(url, allow_redirects=True)
@@ -29,22 +32,38 @@ def expand_tiktok_url(url: str) -> str:
     except Exception:
         return url
 
+# Animated loading
+async def animate_loading(message, text="Downloading video"):
+    spinner = ["⏳", "⌛", "🔄", "🌀"]
+    i = 0
+    while True:
+        try:
+            await message.edit_text(f"{text} {spinner[i % len(spinner)]}")
+            i += 1
+            await asyncio.sleep(0.5)
+        except:
+            break
+
+# Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me one or more TikTok links (www.tiktok.com or vt.tiktok.com) and I will download them!"
+        "Send me one or more TikTok links and I will download them!"
     )
 
 async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    urls = re.findall(r'https?://(?:www|vt)\.tiktok\.com/[^\s]+', text)
+    # Match any URL containing tiktok.com
+    urls = re.findall(r'https?://[^\s]*tiktok\.com/[^\s]+', text)
     if not urls:
         await update.message.reply_text("Please send at least one valid TikTok link.")
         return
 
-    # Send a single loading message
-    loading_msg = await update.message.reply_text("Downloading video... ⏳")
-
     caption = "Downloaded by @Save4TiktokVideos_bot"
+
+    # Send loading message
+    loading_msg = await update.message.reply_text("Downloading video... ⏳")
+    # Start spinner animation
+    spinner_task = asyncio.create_task(animate_loading(loading_msg))
 
     for url in urls:
         full_url = expand_tiktok_url(url)
@@ -70,11 +89,12 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     continue
 
+                # Download video into memory
                 with ydl.urlopen(video_url) as resp:
                     buffer.write(resp.read())
 
             if buffer.getbuffer().nbytes == 0:
-                await update.message.reply_text("❌ Downloaded video is empty.")
+                await update.message.reply_text(f"❌ Downloaded video is empty.")
                 continue
 
             buffer.seek(0)
@@ -90,7 +110,8 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"Failed to download a video: {e}")
 
-    # Optionally edit the loading message when done
+    # Stop spinner and edit final message
+    spinner_task.cancel()
     await loading_msg.edit_text("✅ Download complete!")
 
 def run_bot():
