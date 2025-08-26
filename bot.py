@@ -4,6 +4,7 @@ import re
 import threading
 import asyncio
 import requests
+import subprocess
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InputFile
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -11,6 +12,7 @@ import yt_dlp
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))
+
 
 # Minimal HTTP server for Render health check
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -20,9 +22,11 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is running!")
 
+
 def run_http_server():
     server = HTTPServer(("0.0.0.0", PORT), SimpleHandler)
     server.serve_forever()
+
 
 # Expand vt.tiktok.com short URLs
 def expand_tiktok_url(url: str) -> str:
@@ -31,6 +35,30 @@ def expand_tiktok_url(url: str) -> str:
         return resp.url
     except Exception:
         return url
+
+
+# Fix MP4 duration metadata using ffmpeg in-memory
+def fix_mp4_duration(input_bytes: bytes) -> io.BytesIO:
+    input_buf = io.BytesIO(input_bytes)
+    output_buf = io.BytesIO()
+
+    process = subprocess.run(
+        [
+            "ffmpeg",
+            "-i", "pipe:0",
+            "-c", "copy",
+            "-movflags", "+faststart",
+            "-f", "mp4",
+            "pipe:1"
+        ],
+        input=input_buf.read(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL
+    )
+    output_buf.write(process.stdout)
+    output_buf.seek(0)
+    return output_buf
+
 
 # Animated loading
 async def animate_loading(message, text="Downloading video"):
@@ -44,25 +72,25 @@ async def animate_loading(message, text="Downloading video"):
         except:
             break
 
+
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me one or more TikTok links and I will download them!"
+        "Send me one or more TikTok links and I will download them in HD without watermark!"
     )
+
 
 async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    # Match any URL containing tiktok.com
     urls = re.findall(r'https?://[^\s]*tiktok\.com/[^\s]+', text)
     if not urls:
         await update.message.reply_text("Please send at least one valid TikTok link.")
         return
 
-    caption = "Downloaded by @Save4TiktokVideos_bot"
+    caption = "Downloaded by@Save4TiktokVideos_bot"
 
     # Send loading message
     loading_msg = await update.message.reply_text("Downloading video... ⏳")
-    # Start spinner animation
     spinner_task = asyncio.create_task(animate_loading(loading_msg))
 
     for url in urls:
@@ -85,7 +113,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 video_url = info.get("url")
                 if not video_url:
                     await update.message.reply_text(
-                        f"❌ Unable to find video stream for one of the links."
+                        "❌ Unable to find video stream for one of the links."
                     )
                     continue
 
@@ -94,12 +122,14 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     buffer.write(resp.read())
 
             if buffer.getbuffer().nbytes == 0:
-                await update.message.reply_text(f"❌ Downloaded video is empty.")
+                await update.message.reply_text("❌ Downloaded video is empty.")
                 continue
 
-            buffer.seek(0)
+            # Fix duration metadata for Telegram
+            buffer_fixed = fix_mp4_duration(buffer.getvalue())
+
             await update.message.reply_video(
-                video=InputFile(buffer, filename="tiktok.mp4"),
+                video=InputFile(buffer_fixed, filename="tiktok.mp4"),
                 caption=caption
             )
 
@@ -110,15 +140,16 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"Failed to download a video: {e}")
 
-    # Stop spinner and edit final message
     spinner_task.cancel()
     await loading_msg.edit_text("✅ Download complete!")
+
 
 def run_bot():
     app_bot = ApplicationBuilder().token(BOT_TOKEN).build()
     app_bot.add_handler(CommandHandler("start", start))
     app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok))
     app_bot.run_polling()
+
 
 if __name__ == "__main__":
     threading.Thread(target=run_http_server, daemon=True).start()
