@@ -27,7 +27,7 @@ def run_http_server():
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me a TikTok link and I will download the video for you!"
+        "Send me a TikTok link and I will download HD for you!"
     )
 
 
