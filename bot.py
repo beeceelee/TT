@@ -28,14 +28,14 @@ def run_http_server():
 # --- Telegram handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me a TikTok link and I will download the video for you!"
+        "Send me a TikTok link and I will download in HD for you!"
     )
 
 
 async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     if "tiktok.com" not in url:
-        await update.message.reply_text("Please send a valid TikTok link.")
+        await update.message.reply_text("Please send a valid TikTok link to download!!")
         return
 
     await update.message.reply_text("Downloading video... ⏳")
