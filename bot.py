@@ -37,29 +37,6 @@ def expand_tiktok_url(url: str) -> str:
         return url
 
 
-# Fix MP4 duration metadata using ffmpeg in-memory
-def fix_mp4_duration(input_bytes: bytes) -> io.BytesIO:
-    input_buf = io.BytesIO(input_bytes)
-    output_buf = io.BytesIO()
-
-    process = subprocess.run(
-        [
-            "ffmpeg",
-            "-i", "pipe:0",
-            "-c", "copy",
-            "-movflags", "+faststart",
-            "-f", "mp4",
-            "pipe:1"
-        ],
-        input=input_buf.read(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL
-    )
-    output_buf.write(process.stdout)
-    output_buf.seek(0)
-    return output_buf
-
-
 # Animated loading
 async def animate_loading(message, text="Downloading video"):
     spinner = ["⏳", "⌛", "🔄", "🌀"]
@@ -73,10 +50,42 @@ async def animate_loading(message, text="Downloading video"):
             break
 
 
+# Download and process TikTok video fully in-memory
+def download_and_fix_video(full_url: str) -> io.BytesIO:
+    # Extract direct video URL with yt-dlp
+    ydl_opts = {"quiet": True}
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(full_url, download=False)
+        video_url = info.get("url")
+        if not video_url:
+            return None
+
+    # Download via ffmpeg and fix duration metadata
+    process = subprocess.run(
+        [
+            "ffmpeg",
+            "-i", video_url,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            "-f", "mp4",
+            "pipe:1"
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL
+    )
+
+    if not process.stdout or len(process.stdout) == 0:
+        return None
+
+    buffer = io.BytesIO(process.stdout)
+    buffer.seek(0)
+    return buffer
+
+
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me one or more TikTok links and I will download them in HD without watermark!"
+        "Send me one or more TikTok links and I will download them!"
     )
 
 
@@ -87,56 +96,25 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please send at least one valid TikTok link.")
         return
 
-    caption = "Downloaded by@Save4TiktokVideos_bot"
-
-    # Send loading message
+    caption = "Downloaded by @Save4TiktokVideos_bot"
     loading_msg = await update.message.reply_text("Downloading video... ⏳")
     spinner_task = asyncio.create_task(animate_loading(loading_msg))
 
     for url in urls:
         full_url = expand_tiktok_url(url)
         try:
-            buffer = io.BytesIO()
-            ydl_opts = {
-                "format": "mp4/best",
-                "quiet": True,
-                "noplaylist": True,
-                "merge_output_format": "mp4",
-                "http_headers": {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                    "Referer": "https://www.tiktok.com/",
-                },
-            }
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(full_url, download=False)
-                video_url = info.get("url")
-                if not video_url:
-                    await update.message.reply_text(
-                        "❌ Unable to find video stream for one of the links."
-                    )
-                    continue
-
-                # Download video into memory
-                with ydl.urlopen(video_url) as resp:
-                    buffer.write(resp.read())
-
-            if buffer.getbuffer().nbytes == 0:
-                await update.message.reply_text("❌ Downloaded video is empty.")
+            buffer = download_and_fix_video(full_url)
+            if not buffer:
+                await update.message.reply_text(
+                    f"❌ Failed to download or process video: {full_url}"
+                )
                 continue
 
-            # Fix duration metadata for Telegram
-            buffer_fixed = fix_mp4_duration(buffer.getvalue())
-
             await update.message.reply_video(
-                video=InputFile(buffer_fixed, filename="tiktok.mp4"),
+                video=InputFile(buffer, filename="tiktok.mp4"),
                 caption=caption
             )
 
-        except yt_dlp.utils.DownloadError:
-            await update.message.reply_text(
-                "❌ Unable to download video (private, removed, or region-locked)."
-            )
         except Exception as e:
             await update.message.reply_text(f"Failed to download a video: {e}")
 
