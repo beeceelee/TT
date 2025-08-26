@@ -7,7 +7,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 import yt_dlp
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-PORT = int(os.environ.get("PORT", 10000))  # Render sets this automatically
+PORT = int(os.environ.get("PORT", 10000))
 
 # Minimal HTTP server for Render
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -41,14 +41,33 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "format": "mp4",
             "quiet": True,
             "noplaylist": True,
+            "outtmpl": "-",  # stdout
+            "merge_output_format": "mp4",  # ensure proper mp4
+            "postprocessors": [{
+                "key": "FFmpegVideoConvertor",
+                "preferedformat": "mp4"
+            }],
         }
 
+        # Custom sink to write into BytesIO instead of a file
+        class MyLogger:
+            def debug(self, msg): pass
+            def warning(self, msg): pass
+            def error(self, msg): print(msg)
+
+        def my_hook(d):
+            if d["status"] == "finished":
+                print("Download complete.")
+
+        ydl_opts["logger"] = MyLogger()
+        ydl_opts["progress_hooks"] = [my_hook]
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            # Use yt-dlp’s own downloader with proper headers
-            video_url = info["url"]
-            with ydl.urlopen(video_url) as response:
-                buffer.write(response.read())
+            info = ydl.extract_info(url, download=True)
+            # After download, yt-dlp will create a proper mp4 file on disk
+            filename = ydl.prepare_filename(info)
+            with open(filename, "rb") as f:
+                buffer.write(f.read())
 
         buffer.seek(0)
         await update.message.reply_video(video=InputFile(buffer, filename="tiktok.mp4"))
