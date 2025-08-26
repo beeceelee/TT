@@ -7,9 +7,9 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 import yt_dlp
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-PORT = int(os.environ.get("PORT", 10000))  # Render sets this automatically
+PORT = int(os.environ.get("PORT", 10000))
 
-# Minimal HTTP server for Render health checks
+# Minimal HTTP server for Render health check
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -39,7 +39,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         ydl_opts = {
             "format": "mp4/best",
-            "quiet": False,  # show logs for debugging
+            "quiet": False,
             "noplaylist": True,
             "outtmpl": tmp_path,
             "merge_output_format": "mp4",
@@ -53,15 +53,23 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
+        # Check if file exists and is not empty
         if not os.path.exists(tmp_path) or os.path.getsize(tmp_path) == 0:
-            await update.message.reply_text("❌ Failed: video file is empty.")
+            await update.message.reply_text(
+                "❌ Failed: video file is empty. It may be private, removed, or region-locked."
+            )
             return
 
+        # Send video to Telegram
         with open(tmp_path, "rb") as f:
             await update.message.reply_video(video=InputFile(f, filename="tiktok.mp4"))
 
         os.remove(tmp_path)
 
+    except yt_dlp.utils.DownloadError:
+        await update.message.reply_text(
+            "❌ Unable to download this video. It may be private, removed, or region-locked."
+        )
     except Exception as e:
         await update.message.reply_text(f"Failed to download: {e}")
 
