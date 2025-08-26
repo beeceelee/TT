@@ -35,7 +35,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please send at least one valid TikTok link.")
         return
 
-    caption = "Downloaded by @Save4TiktokVideos_bot"
+    caption = "Downloaded by;@Save4TiktokVideos_bot"
 
     for url in urls:
         await update.message.reply_text(f"Downloading video: {url} ⏳")
