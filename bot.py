@@ -5,6 +5,7 @@ import threading
 import asyncio
 import requests
 import subprocess
+import tempfile
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InputFile
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
@@ -12,7 +13,6 @@ import yt_dlp
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))
-
 
 # Minimal HTTP server for Render health check
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -22,11 +22,9 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is running!")
 
-
 def run_http_server():
     server = HTTPServer(("0.0.0.0", PORT), SimpleHandler)
     server.serve_forever()
-
 
 # Expand vt.tiktok.com short URLs
 def expand_tiktok_url(url: str) -> str:
@@ -35,7 +33,6 @@ def expand_tiktok_url(url: str) -> str:
         return resp.url
     except Exception:
         return url
-
 
 # Animated loading
 async def animate_loading(message, text="Downloading video"):
@@ -49,45 +46,56 @@ async def animate_loading(message, text="Downloading video"):
         except:
             break
 
-
-# Download and process TikTok video fully in-memory
+# Download video via yt-dlp to temp file, then fix metadata in-memory
 def download_and_fix_video(full_url: str) -> io.BytesIO:
-    # Extract direct video URL with yt-dlp
-    ydl_opts = {"quiet": True}
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(full_url, download=False)
-        video_url = info.get("url")
-        if not video_url:
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+
+        ydl_opts = {
+            "format": "mp4/best",
+            "outtmpl": tmp_path,
+            "merge_output_format": "mp4",
+            "quiet": True,
+            "noplaylist": True,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([full_url])
+
+        if os.path.getsize(tmp_path) == 0:
             return None
 
-    # Download via ffmpeg and fix duration metadata
-    process = subprocess.run(
-        [
-            "ffmpeg",
-            "-i", video_url,
-            "-c", "copy",
-            "-movflags", "+faststart",
-            "-f", "mp4",
-            "pipe:1"
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL
-    )
+        # Fix duration metadata using ffmpeg
+        process = subprocess.run(
+            [
+                "ffmpeg",
+                "-i", tmp_path,
+                "-c", "copy",
+                "-movflags", "+faststart",
+                "-f", "mp4",
+                "pipe:1"
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL
+        )
 
-    if not process.stdout or len(process.stdout) == 0:
-        return None
+        if not process.stdout or len(process.stdout) == 0:
+            return None
 
-    buffer = io.BytesIO(process.stdout)
-    buffer.seek(0)
-    return buffer
+        buffer = io.BytesIO(process.stdout)
+        buffer.seek(0)
+        return buffer
 
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me TikTok links and I will download in HD them!"
+        "Send me one or more TikTok links and I will download them!"
     )
-
 
 async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -121,13 +129,11 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     spinner_task.cancel()
     await loading_msg.edit_text("✅ Download complete!")
 
-
 def run_bot():
     app_bot = ApplicationBuilder().token(BOT_TOKEN).build()
     app_bot.add_handler(CommandHandler("start", start))
     app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok))
     app_bot.run_polling()
-
 
 if __name__ == "__main__":
     threading.Thread(target=run_http_server, daemon=True).start()
