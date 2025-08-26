@@ -1,6 +1,5 @@
 import io
 import os
-import asyncio
 from telegram import Update, InputFile
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
@@ -21,30 +20,21 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         buffer = io.BytesIO()
-        
-        # yt-dlp options: download to memory (pipe) instead of file
         ydl_opts = {
             'format': 'mp4',
-            'outtmpl': '-',         # output to stdout
+            'outtmpl': '-',
             'quiet': True,
-            'noplaylist': True,
-            'logtostderr': False,
-            'progress_hooks': [],
-            'postprocessors': [{
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4'
-            }]
+            'noplaylist': True
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            # Download video to memory
-            video_data = io.BytesIO()
             ydl.download([url])
-        
-        # NOTE: Some versions of yt-dlp require temporary file; if it fails, we can pipe stdout to BytesIO
-        # Sending video back to user
-        await update.message.reply_video(video=InputFile(video_data, filename="tiktok.mp4"))
+
+        # Read downloaded video from buffer
+        buffer.seek(0)
+        await update.message.reply_video(
+            video=InputFile(buffer, filename="tiktok.mp4")
+        )
 
     except Exception as e:
         await update.message.reply_text(f"Failed to download: {e}")
