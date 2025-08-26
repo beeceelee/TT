@@ -9,7 +9,7 @@ import yt_dlp
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))  # Render sets this automatically
 
-# Minimal HTTP server (satisfies Render free Web Service port binding)
+# Minimal HTTP server for Render
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -37,21 +37,17 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         buffer = io.BytesIO()
 
-        # yt-dlp options: write video directly to BytesIO
         ydl_opts = {
             "format": "mp4",
             "quiet": True,
             "noplaylist": True,
-            "outtmpl": "-",  # output to stdout
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            result = ydl.extract_info(url, download=True)
-            # yt-dlp by default writes to a file, so instead we grab best URL
-            video_url = result["url"]
-
-            import urllib.request
-            with urllib.request.urlopen(video_url) as response:
+            info = ydl.extract_info(url, download=False)
+            # Use yt-dlp’s own downloader with proper headers
+            video_url = info["url"]
+            with ydl.urlopen(video_url) as response:
                 buffer.write(response.read())
 
         buffer.seek(0)
