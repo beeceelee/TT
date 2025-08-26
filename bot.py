@@ -85,7 +85,7 @@ def download_and_fix_video(full_url: str) -> io.BytesIO:
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me one or more TikTok links and I will download them!"
+        "Send me TikTok links and I will download in HD them!"
     )
 
 
