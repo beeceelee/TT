@@ -52,8 +52,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             buffer = io.BytesIO(f.read())
         buffer.seek(0)
 
-        caption = "Downloaded by
-        @Save4TiktokVideos_bot"
+        caption = "Downloaded by:@Save4TiktokVideos_bot"
         await update.message.reply_video(
             video=InputFile(buffer, filename="tiktok.mp4"),
             caption=caption
