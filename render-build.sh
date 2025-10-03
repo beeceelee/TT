@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-
-# Update pip
-pip install --upgrade pip
-
-# Install requirements
+apt-get update
+apt-get install -y ffmpeg
+pip install -U yt-dlp
 pip install -r requirements.txt
