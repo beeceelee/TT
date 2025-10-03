@@ -1,3 +1,4 @@
-requests
-Flask
+requests==2.31.0
+Flask==2.3.2
 python-telegram-bot==20.3
+yt_dlp==2025.9.21
