@@ -32,12 +32,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Skip replying in groups
-    if update.message.chat.type in ["group", "supergroup"]:
+    text = update.message.text.strip()
+
+    # Skip group messages if they are NOT TikTok links
+    if update.message.chat.type in ["group", "supergroup"] and "tiktok.com" not in text:
         return
 
-    url = update.message.text.strip()
-    if "tiktok.com" not in url:
+    if "tiktok.com" not in text:
         await update.message.reply_text("❌ Please send a valid TikTok link.")
         return
 
@@ -58,7 +59,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(text, download=False)
             video_url = info.get("url")
             if not video_url:
                 await update.message.reply_text(
