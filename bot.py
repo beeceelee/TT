@@ -26,11 +26,9 @@ def run_http_server():
     server = HTTPServer(("0.0.0.0", PORT), SimpleHandler)
     server.serve_forever()
 
-# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Send me a TikTok video link and I’ll download it (no watermark).")
 
-# TikTok downloader
 async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type = update.message.chat.type
     url = update.message.text.strip()
@@ -46,7 +44,6 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_type in ["group", "supergroup"] and "tiktok.com" not in url:
         return
 
-    # URL validation
     if "tiktok.com" not in url or "/video/" not in url:
         if chat_type == "private":
             await update.message.reply_text("❌ Please send a valid TikTok video link.")
@@ -64,6 +61,8 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "quiet": False,
             "noplaylist": True,
             "merge_output_format": "mp4",
+            "no_check_certificate": True,
+            "geo_bypass": True,
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                               "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -116,7 +115,6 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Failed to process video: {e}")
 
-# Inline button handler
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
