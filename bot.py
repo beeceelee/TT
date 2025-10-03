@@ -2,7 +2,7 @@ import os
 import io
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from telegram import Update, InputFile
+from telegram import Update, InputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
@@ -27,20 +27,24 @@ def run_http_server():
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me a TikTok link and I will download HD for you!"
+        "👋 Send me a TikTok link and I will download HD for you!"
     )
 
 
 async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text.strip()
-    if "tiktok.com" not in url:
-        await update.message.reply_text("Please send a valid TikTok link.")
+    # Skip replying in groups
+    if update.message.chat.type in ["group", "supergroup"]:
         return
 
-    await update.message.reply_text("Downloading video... ⏳")
+    url = update.message.text.strip()
+    if "tiktok.com" not in url:
+        await update.message.reply_text("❌ Please send a valid TikTok link.")
+        return
+
+    await update.message.reply_text("⏳ Downloading video...")
 
     try:
-        buffer = io.BytesIO()  # in-memory buffer
+        buffer = io.BytesIO()
 
         ydl_opts = {
             "format": "mp4/best",
@@ -71,13 +75,19 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         buffer.seek(0)
 
-        # Dynamically fetch bot username
         bot_username = context.bot.username
         caption = f"Downloaded by @{bot_username}"
 
+        # Inline button example
+        keyboard = [
+            [InlineKeyboardButton("📥 Download Again", callback_data="download_again")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         await update.message.reply_video(
             video=InputFile(buffer, filename="tiktok.mp4"),
-            caption=caption
+            caption=caption,
+            reply_markup=reply_markup
         )
 
     except yt_dlp.utils.DownloadError:
@@ -85,7 +95,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Unable to download this video. It may be private, removed, or region-locked."
         )
     except Exception as e:
-        await update.message.reply_text(f"Failed to download: {e}")
+        await update.message.reply_text(f"❌ Failed to download: {e}")
 
 
 # Run bot
