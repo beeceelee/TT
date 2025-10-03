@@ -25,7 +25,7 @@ def run_http_server():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Send me a TikTok link and I will download HD for you!"
+        "👋 Send me a TikTok link and I will download HD for you!"
     )
 
 async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -41,7 +41,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Please send a valid TikTok link.")
         return
 
-    await update.message.reply_text("Downloading video... ⏳")
+    await update.message.reply_text("⏳ Downloading video...")
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
@@ -58,14 +58,27 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
+        if not os.path.exists(tmp_path):
+            await update.message.reply_text(f"❌ Download failed: {tmp_path} not found.")
+            return
+
         tmp_fixed_path = tmp_path + "_fixed.mp4"
-        subprocess.run([
+
+        result = subprocess.run([
             "ffmpeg",
             "-i", tmp_path,
             "-c", "copy",
             "-movflags", "+faststart",
             tmp_fixed_path
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        if result.returncode != 0:
+            await update.message.reply_text(f"❌ FFmpeg failed:\n{result.stderr.decode()}")
+            return
+
+        if not os.path.exists(tmp_fixed_path):
+            await update.message.reply_text(f"❌ Fixed video not created: {tmp_fixed_path}")
+            return
 
         with open(tmp_fixed_path, "rb") as f:
             buffer_fixed = io.BytesIO(f.read())
@@ -86,6 +99,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
+        # Cleanup
         os.remove(tmp_path)
         os.remove(tmp_fixed_path)
 
