@@ -1,60 +1,86 @@
 import os
-import requests
-from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Take token from Render env var
-API_URL = "https://www.tikwm.com/api/"
-
-app = Flask(__name__)
-bot = Bot(token=BOT_TOKEN)
-
-# Dispatcher is required to handle updates
-dispatcher = Dispatcher(bot, None, workers=0, use_context=True)
-
-
-def start(update, context):
-    update.message.reply_text("👋 Send me a TikTok link and I’ll download it (no watermark).")
-
-
-def download_tiktok(update, context):
-    url = update.message.text.strip()
-
-    if "tiktok.com" not in url:
-        update.message.reply_text("❌ Please send a valid TikTok link.")
-        return
+import io
+import threading
+import tempfile
+import subprocess
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from telegram import Update, InputFile
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+@@ -42,13 +40,10 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Downloading video... ")
 
     try:
-        r = requests.post(API_URL, data={"url": url})
-        data = r.json()
+        # Use yt-dlp to download directly to a temp file
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+        buffer = io.BytesIO()  # in-memory buffer
 
-        if data.get("data"):
-            video_url = data["data"]["play"]
-            caption = "✅ TikTok Video (no watermark)\n\nDownloaded via: @Save4TiktokVideoBot"
-            update.message.reply_video(video=video_url, caption=caption)
-        else:
-            update.message.reply_text("⚠️ Couldn’t download video. Try another link.")
+        ydl_opts = {
+            "format": "mp4/best",
+            "outtmpl": tmp_path,
+            "quiet": True,
+            "noplaylist": True,
+            "merge_output_format": "mp4",
+@@ -59,42 +54,38 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+        # Fix metadata (move moov atom to start)
+        tmp_fixed_path = tmp_path + "_fixed.mp4"
+        subprocess.run([
+            "ffmpeg",
+            "-i", tmp_path,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            tmp_fixed_path
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # Read fixed file into memory
+        with open(tmp_fixed_path, "rb") as f:
+            buffer_fixed = io.BytesIO(f.read())
+        buffer_fixed.seek(0)
+
+        # Dynamic caption with bot username
+            info = ydl.extract_info(url, download=False)
+            video_url = info.get("url")
+            if not video_url:
+                await update.message.reply_text(
+                    " Unable to find video stream. It may be private or removed."
+                )
+                return
+
+            with ydl.urlopen(video_url) as resp:
+                buffer.write(resp.read())
+
+        if buffer.getbuffer().nbytes == 0:
+            await update.message.reply_text(" Downloaded video is empty.")
+            return
+
+        buffer.seek(0)
+
+        # Dynamically fetch bot username
+        bot_username = context.bot.username
+        caption = f"Downloaded by @{bot_username}"
+
+        await update.message.reply_video(
+            video=InputFile(buffer_fixed, filename="tiktok.mp4"),
+            video=InputFile(buffer, filename="tiktok.mp4"),
+            caption=caption
+        )
+
+        # Cleanup
+        os.remove(tmp_path)
+        os.remove(tmp_fixed_path)
+
+    except yt_dlp.utils.DownloadError:
+        await update.message.reply_text(
+            " Unable to download this video. It may be private, removed, or region-locked."
+        )
     except Exception as e:
-        update.message.reply_text(f"⚠️ Error: {e}")
+        await update.message.reply_text(f" Failed to process video: {e}")
+        await update.message.reply_text(f"Failed to download: {e}")
 
 
-# Register handlers
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, download_tiktok))
-
-
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return "ok", 200
-
-
-@app.route("/")
-def index():
-    return "🤖 Bot is running!", 200
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+# Run bot
