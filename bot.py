@@ -124,14 +124,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=None,
         )
 
-async def main():
+def main():
     app_bot = ApplicationBuilder().token(BOT_TOKEN).build()
     app_bot.add_handler(CommandHandler("start", start))
     app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok))
     app_bot.add_handler(CallbackQueryHandler(button_handler))
-    await app_bot.run_polling()
+
+    threading.Thread(target=run_http_server, daemon=True).start()
+    app_bot.run_polling()
 
 if __name__ == "__main__":
-    threading.Thread(target=run_http_server, daemon=True).start()
-    import asyncio
-    asyncio.run(main())
+    main()
