@@ -5,14 +5,12 @@ import tempfile
 import subprocess
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from telegram import Update, InputFile, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram import Update, InputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import yt_dlp
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))
-
-bot = Bot(token=BOT_TOKEN)
 
 # Minimal HTTP server for Render health check
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -58,7 +56,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ydl_opts = {
             "format": "bestvideo+bestaudio/best",
             "outtmpl": tmp_path,
-            "quiet": False,
+            "quiet": True,
             "noplaylist": True,
             "merge_output_format": "mp4",
             "no_check_certificate": True,
