@@ -3,6 +3,7 @@ import io
 import threading
 import tempfile
 import subprocess
+import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update, InputFile, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
@@ -34,6 +35,13 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type = update.message.chat.type
     url = update.message.text.strip()
 
+    # Resolve short TikTok URLs
+    try:
+        resp = requests.head(url, allow_redirects=True, timeout=10)
+        url = resp.url
+    except Exception:
+        pass
+
     # Ignore non-TikTok messages in groups
     if chat_type in ["group", "supergroup"] and "tiktok.com" not in url:
         return
@@ -51,7 +59,7 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tmp_path = tmp_file.name
 
         ydl_opts = {
-            "format": "mp4[bv*+ba]/mp4",
+            "format": "bestvideo+bestaudio/best",
             "outtmpl": tmp_path,
             "quiet": False,
             "noplaylist": True,
