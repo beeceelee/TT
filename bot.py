@@ -1,65 +1,70 @@
 import os
 import io
-import threading
 import tempfile
 import subprocess
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from telegram import Update, InputFile, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from flask import Flask, request
+from telegram import Update, InputFile, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 import yt_dlp
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 10000))
 
-# Minimal HTTP server for Render health check
-class SimpleHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"Bot is running!")
+app = Flask(__name__)
+bot = Bot(token=BOT_TOKEN)
+dispatcher = Dispatcher(bot, None, workers=0, use_context=True)
 
-def run_http_server():
-    server = HTTPServer(("0.0.0.0", PORT), SimpleHandler)
-    server.serve_forever()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "👋 Send me a TikTok link and I will download HD for you!"
-    )
+# Start command
+def start(update, context):
+    update.message.reply_text("👋 Send me a TikTok link and I’ll download it (no watermark).")
 
-async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# TikTok downloader
+def download_tiktok(update, context):
     chat_type = update.message.chat.type
     url = update.message.text.strip()
 
-    # In groups: ignore if not TikTok link
+    # Group check: ignore if not TikTok link
     if chat_type in ["group", "supergroup"] and "tiktok.com" not in url:
         return
 
-    if "tiktok.com" not in url:
+    # URL validation
+    if "tiktok.com" not in url or "/video/" not in url:
         if chat_type == "private":
-            await update.message.reply_text("❌ Please send a valid TikTok link.")
+            update.message.reply_text("❌ Please send a valid TikTok video link.")
         return
 
-    await update.message.reply_text("⏳ Downloading video...")
+    update.message.reply_text("⏳ Downloading video...")
 
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp_file:
             tmp_path = tmp_file.name
 
         ydl_opts = {
-            "format": "mp4/best",
-            "outtmpl": tmp_path,
-            "quiet": True,
+            "format": "mp4[bv*+ba]/mp4",
+            "quiet": False,  # debug logs
             "noplaylist": True,
             "merge_output_format": "mp4",
+            "outtmpl": tmp_path,
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 (KHTML, like Gecko) "
+                              "Chrome/117.0.0.0 Safari/537.36",
+                "Referer": "https://www.tiktok.com/",
+            },
+            # "cookiesfrombrowser": ("chrome",),  # optional for private videos
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            try:
+                info = ydl.extract_info(url, download=True)
+            except Exception as e:
+                update.message.reply_text(f"❌ yt-dlp error: {str(e)}")
+                return
 
         if not os.path.exists(tmp_path):
-            await update.message.reply_text(f"❌ Download failed: {tmp_path} not found.")
+            update.message.reply_text(f"❌ Download failed: {tmp_path} not found.")
             return
 
         tmp_fixed_path = tmp_path + "_fixed.mp4"
@@ -73,11 +78,11 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if result.returncode != 0:
-            await update.message.reply_text(f"❌ FFmpeg failed:\n{result.stderr.decode()}")
+            update.message.reply_text(f"❌ FFmpeg failed:\n{result.stderr.decode()}")
             return
 
         if not os.path.exists(tmp_fixed_path):
-            await update.message.reply_text(f"❌ Fixed video not created: {tmp_fixed_path}")
+            update.message.reply_text(f"❌ Fixed video not created: {tmp_fixed_path}")
             return
 
         with open(tmp_fixed_path, "rb") as f:
@@ -93,45 +98,52 @@ async def download_tiktok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(buttons)
 
-        await update.message.reply_video(
+        update.message.reply_video(
             video=InputFile(buffer_fixed, filename="tiktok.mp4"),
             caption=caption,
             reply_markup=reply_markup
         )
 
-        # Cleanup
         os.remove(tmp_path)
         os.remove(tmp_fixed_path)
 
-    except yt_dlp.utils.DownloadError:
-        await update.message.reply_text(
-            "❌ Unable to download this video. It may be private, removed, or region-locked."
-        )
     except Exception as e:
-        await update.message.reply_text(f"❌ Failed to process video: {e}")
+        update.message.reply_text(f"❌ Failed to process video: {e}")
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# Inline button handler
+def button_handler(update, context):
     query = update.callback_query
-    await query.answer()
+    query.answer()
 
     if query.data == "again":
-        await query.edit_message_caption(
+        query.edit_message_caption(
             caption="🔁 Please send another TikTok link to download.",
             reply_markup=None,
         )
     elif query.data == "about":
-        await query.edit_message_caption(
+        query.edit_message_caption(
             caption="ℹ️ This bot downloads TikTok videos without watermark.\nMade with ❤️",
             reply_markup=None,
         )
 
-def run_bot():
-    app_bot = ApplicationBuilder().token(BOT_TOKEN).build()
-    app_bot.add_handler(CommandHandler("start", start))
-    app_bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok))
-    app_bot.add_handler(CallbackQueryHandler(button_handler))
-    app_bot.run_polling()
+
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok))
+dispatcher.add_handler(CallbackQueryHandler(button_handler))
+
+
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
+    return "ok", 200
+
+
+@app.route("/")
+def index():
+    return "🤖 Bot is running!", 200
+
 
 if __name__ == "__main__":
-    threading.Thread(target=run_http_server, daemon=True).start()
-    run_bot()
+    app.run(host="0.0.0.0", port=PORT)
