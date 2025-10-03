@@ -1,5 +1,3 @@
-Don't give this codes.
-
 import os
 import requests
 from flask import Flask, request
